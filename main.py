@@ -1,8 +1,11 @@
 import sys
+
+from PyQt5.QtCore import QDate
+from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QTableView, QVBoxLayout, QWidget, QDialog, \
-    QMessageBox, QItemDelegate, QComboBox, QStyledItemDelegate, QHBoxLayout, QLabel
+     QMessageBox, QComboBox, QStyledItemDelegate, QHBoxLayout, QListView
 from PyQt5.QtSql import QSqlDatabase, QSqlTableModel, QSqlQuery
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtWidgets
 
 
 class filmsWindow(QDialog):
@@ -19,6 +22,7 @@ class filmsWindow(QDialog):
 
         self.tableView = QTableView()
         self.tableView.setModel(self.model)
+        self.tableView.hideColumn(0)
 
         # Создаем кнопки "Добавить" и "Удалить" в окне таблицы
         self.addButton = QPushButton("+", self)
@@ -88,19 +92,19 @@ class filmsWindow(QDialog):
         event.accept()
 
 class ComboBoxDelegate(QStyledItemDelegate):
-    def __init__(self, films, parent=None):
+    def __init__(self, Films, parent=None):
         super().__init__(parent)
-        self.films = films
+        self.Films = Films
 
     def createEditor(self, parent, option, index):
         comboBox = QComboBox(parent)
-        for film in self.films:
-            comboBox.addItem(film)
+        for Film in self.Films:
+            comboBox.addItem(Film)
         return comboBox
 
     def setEditorData(self, editor, index):
-        film = index.data()
-        comboBoxIndex = editor.findText(film)
+        Film = index.data()
+        comboBoxIndex = editor.findText(Film)
         if comboBoxIndex >= 0:
             editor.setCurrentIndex(comboBoxIndex)
 
@@ -119,28 +123,49 @@ class RaspisanieWindow(QDialog):
         self.model.select()
 
         # Получаем список фильмов из базы данных
-        films = self.get_films_from_db()
+        Films = self.get_films_from_db()
 
         # Создаем делегат с полученным списком фильмов
-        delegate = ComboBoxDelegate(films, self)
+        delegate = ComboBoxDelegate(Films, self)
         self.tableView = QTableView()
         self.tableView.setModel(self.model)
+        self.tableView.verticalHeader().setVisible(False)
+
+        # Создаем виджет списка дат
+        self.dateListView = QListView()
+        self.dateListView.setFixedWidth(60)
+        self.dateListView.setSpacing(6)  # Устанавливаем фиксированную ширину для списка дат
+
+        # Создаем модель для списка дат и добавляем даты
+        date_model = QStandardItemModel()
+        date_model.appendRow(QStandardItem(''))
+        current_date = QDate.currentDate()
+        for i in range(8):
+            date = current_date.addDays(i)
+            date_str = date.toString("dd.MM")
+            item = QStandardItem(date_str)
+            date_model.appendRow(item)
+
+        self.dateListView.setModel(date_model)
+        # Применяем стиль CSS к элементам списка дат
+        self.dateListView.setStyleSheet("QListView::item { border-bottom: 1px solid white; }")
 
         # Применяем ComboBoxDelegate ко всем столбцам модели
         for column in range(self.model.columnCount()):
             self.tableView.setItemDelegateForColumn(column, delegate)
 
-        layout = QVBoxLayout()
+        layout = QHBoxLayout()
+        layout.addWidget(self.dateListView)
         layout.addWidget(self.tableView)
         self.setLayout(layout)
 
     def get_films_from_db(self):
         # Создаем SQL запрос
         query = QSqlQuery("SELECT название_фильма FROM Films")
-        films = []
+        Films = []
         while query.next():
-            films.append(query.value(0))  # предполагается, что названия фильмов хранятся в первом столбце
-        return films
+            Films.append(query.value(0))
+        return Films
 
 class HomeWindow(QDialog):
     def __init__(self, parent=None):
@@ -157,8 +182,30 @@ class HomeWindow(QDialog):
         self.tableView.setModel(self.model)
         self.tableView.clicked.connect(self.onTableClicked)
 
-        # Создаем вертикальный контейнер и добавляем в него виджет таблицы
-        layout = QVBoxLayout()
+        self.tableView.verticalHeader().setVisible(False)
+
+        # Создаем виджет списка дат
+        self.dateListView = QListView()
+        self.dateListView.setFixedWidth(60)
+        self.dateListView.setSpacing(6) # Устанавливаем фиксированную ширину для списка дат
+
+        # Создаем модель для списка дат и добавляем даты
+        date_model = QStandardItemModel()
+        date_model.appendRow(QStandardItem(''))
+        current_date = QDate.currentDate()
+        for i in range(8):
+            date = current_date.addDays(i)
+            date_str = date.toString("dd.MM")
+            item = QStandardItem(date_str)
+            date_model.appendRow(item)
+
+        self.dateListView.setModel(date_model)
+        # Применяем стиль CSS к элементам списка дат
+        self.dateListView.setStyleSheet("QListView::item { border-bottom: 1px solid white; }")
+
+        # Создаем горизонтальный контейнер и добавляем в него виджеты
+        layout = QHBoxLayout()
+        layout.addWidget(self.dateListView)
         layout.addWidget(self.tableView)
         self.setLayout(layout)
 
@@ -211,9 +258,10 @@ class HomeWindow(QDialog):
             print("Error inserting cell number and film id into film_cell table:", query.lastError().text())
 
 
-class RulesWindow(QWidget):
+class RulesWindow(QtWidgets.QWidget):
     buttonClicked = QtCore.pyqtSignal(int)
-    def __init__(self, homewindow, selected_cell, cell_number,film_id):
+
+    def __init__(self, homewindow, selected_cell, cell_number, film_id):
         super().__init__()
         self.homewindow = homewindow
         self.selected_cell = selected_cell
@@ -225,44 +273,42 @@ class RulesWindow(QWidget):
         self.setGeometry(350, 100, 760, 800)
         self.setStyleSheet("background-color: grey; ")
 
-        self.button = QPushButton(self.selected_cell, self)
-        self.button.setGeometry(80, 10, 590, 30)
-        self.button.setStyleSheet("background-color: white; color: black")
-        self.button.clicked.connect(self.openHomewindow)
-
         # Создаем вертикальный лэйаут для всех рядов кнопок и надписей
-        v_layout = QVBoxLayout()
+        v_layout = QtWidgets.QVBoxLayout()
         v_layout.setSpacing(20)  # Устанавливаем интервал между рядами
 
-        def handleButtonClicked():
-            button = self.sender()
-            button_number = int(button.text())
-            self.buttonClicked.emit(button_number)
-            button.setStyleSheet("background-color: red;")  # Изменяем стиль кнопки
+        label_names = ["ряд 1", "ряд 2", "ряд 3", "ряд 4", "ряд 5", "ряд 6"]
 
-        v_layout = QVBoxLayout()  # Создаем вертикальный layout
-        h_layout = QHBoxLayout()  # Создаем горизонтальный layout
+        self.button = QtWidgets.QPushButton(self.selected_cell + ' / выход', self)
+        self.button.setStyleSheet("background-color: white; color: black")
+        self.button.clicked.connect(self.openHomewindow)
+        v_layout.addWidget(self.button)
 
-        for button_number in range(1, 73):
-            button = QPushButton(str(button_number), self)
-            button.setFixedSize(40, 40)
-            button.setStyleSheet("background-color: white; ")
-            button.clicked.connect(handleButtonClicked)
-            h_layout.addWidget(button)
+        for label_name in label_names:
+            v_layout.addWidget(QtWidgets.QLabel("", self))  # Пустой виджет для создания интервала между рядами
 
-            if button_number % 12 == 0:
-                v_layout.addLayout(h_layout)
-                h_layout = QHBoxLayout()  # Создаем новый горизонтальный layout
+            h_layout = QtWidgets.QHBoxLayout()  # Создаем горизонтальный layout
+
+            label = QtWidgets.QLabel(label_name, self)
+            label.setStyleSheet("color: white; font-weight: bold;")
+            h_layout.addWidget(label)
+
+            for button_number in range(1, 13):
+                button = QtWidgets.QPushButton(str((label_names.index(label_name) * 12) + button_number), self)
+                button.setFixedSize(40, 40)
+                button.setStyleSheet("background-color: white; ")
+                button.clicked.connect(self.handleButtonClicked)
+                h_layout.addWidget(button)
+
+            v_layout.addLayout(h_layout)
 
         self.setLayout(v_layout)
 
-    def onButtonClicked(self):
-        sender = self.sender()
-        if sender.styleSheet() == "background-color: white; ":
-            sender.setStyleSheet("background-color: red; ")
-            self.homewindow.updateFilmCell(self.cell_number, self.film_id)
-        else:
-            sender.setStyleSheet("background-color: white; ")
+    def handleButtonClicked(self):
+        button = self.sender()
+        button_number = int(button.text())
+        self.buttonClicked.emit(button_number)
+        button.setStyleSheet("background-color: red;")  # Изменяем стиль кнопки
 
     def openHomewindow(self):
         self.homewindow.show()
