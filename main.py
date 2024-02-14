@@ -1,5 +1,4 @@
 import sys
-
 from PyQt5.QtCore import QDate
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import QApplication, QMainWindow, QPushButton, QTableView, QVBoxLayout, QWidget, QDialog, \
@@ -267,6 +266,7 @@ class RulesWindow(QtWidgets.QWidget):
         self.selected_cell = selected_cell
         self.cell_number = cell_number
         self.film_id = film_id
+        self.updated = False  # Флаг для отслеживания обновления столбца seats
         self.initUI()
 
     def initUI(self):
@@ -293,10 +293,16 @@ class RulesWindow(QtWidgets.QWidget):
             label.setStyleSheet("color: white; font-weight: bold;")
             h_layout.addWidget(label)
 
+            # Получаем текущий список кнопок из столбца seats в таблице film_cell
+            current_buttons = self.getFilmCellButtons()
+
             for button_number in range(1, 13):
                 button = QtWidgets.QPushButton(str((label_names.index(label_name) * 12) + button_number), self)
                 button.setFixedSize(40, 40)
-                button.setStyleSheet("background-color: white; ")
+                if (label_names.index(label_name) * 12) + button_number in current_buttons:
+                    button.setStyleSheet("background-color: red; ")
+                else:
+                    button.setStyleSheet("background-color: white; ")
                 button.clicked.connect(self.handleButtonClicked)
                 h_layout.addWidget(button)
 
@@ -304,18 +310,75 @@ class RulesWindow(QtWidgets.QWidget):
 
         self.setLayout(v_layout)
 
+
+
+    def getFilmCellButtons(self):
+        query = QSqlQuery()
+        query.prepare("SELECT seats FROM film_cell WHERE id_cell = :cell_number")
+        query.bindValue(":cell_number", self.cell_number)
+        if query.exec_() and query.next():
+            seats_str = query.value(0)
+            if seats_str:
+                return list(map(int, seats_str.split(',')))
+        return []
+
     def handleButtonClicked(self):
         button = self.sender()
         button_number = int(button.text())
         self.buttonClicked.emit(button_number)
-        button.setStyleSheet("background-color: red;")  # Изменяем стиль кнопки
+        if button.styleSheet() == "background-color: white; ":
+            button.setStyleSheet("background-color: red;")  # Изменяем стиль кнопки
+        else:
+            button.setStyleSheet("background-color: white;")  # Изменяем стиль кнопки
+
+        # Получаем текущий список кнопок из столбца seats в таблице film_cell
+        current_buttons = self.getFilmCellButtons()
+
+        if button_number in current_buttons:
+            # Кнопка уже нажата, поэтому удаляем ее из списка и меняем цвет на белый
+            current_buttons.remove(button_number)
+            button.setStyleSheet("background-color: white;")
+        else:
+            # Кнопка не нажата, поэтому добавляем ее в список
+            current_buttons.append(button_number)
+
+        # Обновляем столбец seats в таблице film_cell
+        self.updateFilmCellButtons(current_buttons)
+
+    def updateFilmCellButtons(self, buttons):
+        seats_str = ','.join(map(str, buttons))
+        query = QSqlQuery()
+        query.prepare("UPDATE film_cell SET seats = :seats WHERE id_cell = :cell_number")
+        query.bindValue(":seats", seats_str)
+        query.bindValue(":cell_number", self.cell_number)
+        if query.exec_():
+            print("Buttons updated in film_cell table:", seats_str)
+        else:
+            print("Error updating buttons in film_cell table:", query.lastError().text())
 
     def openHomewindow(self):
         self.homewindow.show()
         self.close()
 
     def closeEvent(self, event):
-        self.openHomewindow()
+        if not self.updated:
+            # Получаем текущий список кнопок из столбца seats в таблице film_cell
+            current_buttons = self.getFilmCellButtons()
+
+            # Проверяем, какие кнопки горят красным и отсутствуют в текущем списке
+            red_buttons = [button for button in self.findChildren(QtWidgets.QPushButton) if
+                           button.palette().button().color().name() == "#ff0000"]
+            new_buttons = [button for button in red_buttons if int(button.text()) not in current_buttons]
+
+            # Добавляем новые кнопки в текущий список
+            current_buttons.extend(int(button.text()) for button in new_buttons)
+
+            # Обновляем столбец seats в таблице film_cell
+            self.updateFilmCellButtons(current_buttons)
+
+            self.updated = True
+
+        self.close()
 
 
 class MainWindow(QMainWindow):
